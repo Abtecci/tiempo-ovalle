@@ -267,7 +267,8 @@
 <div class="modal" id="locModal">
   <div class="box">
     <h3>📍 ¿De qué lugar quieres ver el tiempo?</h3>
-    <p>Ingresa tu <b>ciudad</b> y, si quieres, tu <b>localidad o comuna</b> para un pronóstico más preciso.</p>
+    <p>Ingresa tu <b>ciudad o comuna</b> y, si quieres, tu <b>localidad o sector</b>.
+    Si tu sector no aparece, después puedes fijarlo con un clic sobre el mapa de la página.</p>
     <label for="popCity">Ciudad</label>
     <input id="popCity" type="text" placeholder="Ej: Ovalle" autocomplete="off">
     <label for="popLoc">Localidad / Comuna (opcional)</label>
@@ -354,7 +355,7 @@
 
 <!-- ============ MAPA ============ -->
 <section class="card anim" style="animation-delay:.44s">
-  <h2 class="sec">Mapa de la zona — Limarí y Coquimbo <span class="hint">— clic en cada punto para ver su pronóstico</span></h2>
+  <h2 class="sec">Mapa de la zona <span class="hint">— si tu sector no aparece en la búsqueda, haz clic aquí en el mapa y fija tu punto exacto</span></h2>
   <div id="map"></div>
   <div class="maplegend">
     <span><i style="background:#57E39A"></i>seco</span>
@@ -1138,6 +1139,25 @@ function initMap(){
     map=L.map("map",{scrollWheelZoom:false,attributionControl:true}).setView([-30.55,-71.05],8);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
       {maxZoom:14,attribution:"© OpenStreetMap · © CARTO"}).addTo(map);
+    // Fijar ubicación exacta haciendo clic en el mapa (funciona aunque el sector no esté en ningún catálogo)
+    map.on("click",e=>{
+      const{lat,lng}=e.latlng;
+      const div=document.createElement("div");
+      div.innerHTML=`<b>📍 ¿Ver el tiempo de este punto?</b><br>
+        <button style="margin-top:7px;padding:7px 12px;border-radius:8px;border:0;
+        background:#4DA3FF;color:#0d1830;font-weight:700;cursor:pointer">Sí, usar este punto</button>`;
+      div.querySelector("button").addEventListener("click",async()=>{
+        map.closePopup();
+        const prev=(PLACE||"").split("·")[0].trim();
+        let name="Punto elegido";
+        try{name=await reverseGeocode(lat,lng);}catch(err){}
+        // conserva el nombre que el usuario escribió si venía de una búsqueda
+        if(prev&&!/región|region|tu ubicación/i.test(prev)&&prev!=="Ovalle, Región de Coquimbo")name=prev+" · punto ajustado";
+        $("geoMsg").textContent="";
+        await setLocation(lat,lng,name,false,false);
+      });
+      L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
+    });
     updateMap();
   }catch(e){$("map").innerHTML='<div style="padding:24px;color:var(--txt2)">No se pudo cargar el mapa.</div>';}
 }
@@ -1275,13 +1295,21 @@ async function geocode(name,count){
 }
 // Geocodificador OpenStreetMap/Nominatim (cobertura amplia de localidades, sectores y comunas)
 // cc = código de país (ej. "cl") para restringir resultados y evitar homónimos de otros países.
-async function geocodeOSM(q,cc){
+// box=[sur,norte,oeste,este] → si se entrega, la búsqueda queda ACOTADA a esa zona (bounded=1)
+async function geocodeOSM(q,cc,box){
   if(!q)return [];
   const c=cc?`&countrycodes=${encodeURIComponent(cc)}`:"";
+  const v=box?`&viewbox=${box[2]},${box[1]},${box[3]},${box[0]}&bounded=1`:"";
   const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
-    +`&format=json&addressdetails=1&limit=15&accept-language=es${c}`;
+    +`&format=json&addressdetails=1&limit=15&accept-language=es${c}${v}`;
   const arr=await fetchJSON(url,10000);
   return Array.isArray(arr)?arr:[];
+}
+// Dentro de la comuna aceptamos localidades/sectores/áreas con nombre — pero JAMÁS calles ni rutas.
+function isLocalityOSM(r){
+  const cls=r.class||r.category||"";
+  if(cls==="highway")return false;
+  return cls==="place"||cls==="boundary"||cls==="landuse";
 }
 // Acepta SOLO lugares (ciudad/pueblo/localidad/aldea/barrio/sector) o comunas/áreas administrativas.
 // Excluye calles (class "highway"), rutas, edificios, comercios, etc.
@@ -1306,20 +1334,25 @@ async function searchPlace(city,loc){
   if(!city&&!loc)return false;
   try{
     if(loc&&city){
-      // 1) Ubico la ciudad → obtengo país (para restringir) y coordenadas de anclaje.
+      // 1) Ubico la ciudad/comuna → país, centro y LÍMITES de la comuna.
       const cityArr=(await geocodeOSM(city)).filter(isPlaceOSM);
-      const c0=cityArr[0];
+      const c0=cityArr.find(r=>r.class==="boundary")||cityArr[0];
       if(c0){
         const cc=(c0.address&&c0.address.country_code)||"";
-        // 2) Busco la localidad SOLO en ese país y elijo la MÁS CERCANA a la ciudad.
-        const locArr=(await geocodeOSM(loc,cc)).filter(isPlaceOSM);
+        const bb=c0.boundingbox||[];const m=0.35;
+        const box=bb.length===4?[+bb[0]-m,+bb[1]+m,+bb[2]-m,+bb[3]+m]:null;
+        // 2) Busco la localidad ACOTADA a la comuna (nunca calles).
+        let cand=(box?await geocodeOSM(loc,cc,box):[]).filter(isLocalityOSM);
+        // 3) Si no aparece en la comuna, busco en el país (solo lugares poblados).
+        if(!cand.length)cand=(await geocodeOSM(loc,cc)).filter(isPlaceOSM);
         let best=null,bestD=Infinity;
-        for(const x of locArr){const d=distKm(+c0.lat,+c0.lon,+x.lat,+x.lon);if(d<bestD){bestD=d;best=x;}}
-        let lat,lon;
-        if(best&&bestD<=80){lat=+best.lat;lon=+best.lon;}   // localidad/sector real cerca de la ciudad
-        else{lat=+c0.lat;lon=+c0.lon;}                      // no está en el catálogo cerca → centro de la ciudad
+        for(const x of cand){const d=distKm(+c0.lat,+c0.lon,+x.lat,+x.lon);if(d<bestD){bestD=d;best=x;}}
+        let lat,lon,exact=true;
+        if(best&&bestD<=80){lat=+best.lat;lon=+best.lon;}   // localidad/sector real de la comuna
+        else{lat=+c0.lat;lon=+c0.lon;exact=false;}          // no está en el catálogo → centro comunal
         const ov=/ovalle/i.test(city)||/ovalle/i.test(JSON.stringify((best||c0).address||{}));
         await setLocation(lat,lon,`${loc}, ${city}`,ov,false);
+        $("geoMsg").textContent=exact?"":`⚠️ No encontré “${loc}” en el catálogo de mapas; muestro ${city}. Haz clic en el mapa, sobre tu sector, para fijar el punto exacto.`;
         return true;
       }
     } else {
