@@ -1274,10 +1274,12 @@ async function geocode(name,count){
   return j.results||[];
 }
 // Geocodificador OpenStreetMap/Nominatim (cobertura amplia de localidades, sectores y comunas)
-async function geocodeOSM(q){
+// cc = código de país (ej. "cl") para restringir resultados y evitar homónimos de otros países.
+async function geocodeOSM(q,cc){
   if(!q)return [];
+  const c=cc?`&countrycodes=${encodeURIComponent(cc)}`:"";
   const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
-    +`&format=json&addressdetails=1&limit=12&accept-language=es`;
+    +`&format=json&addressdetails=1&limit=15&accept-language=es${c}`;
   const arr=await fetchJSON(url,10000);
   return Array.isArray(arr)?arr:[];
 }
@@ -1302,19 +1304,30 @@ function distKm(la1,lo1,la2,lo2){const R=6371,r=Math.PI/180;
 async function searchPlace(city,loc){
   city=(city||"").trim();loc=(loc||"").trim();
   if(!city&&!loc)return false;
-  const primary=(loc&&city)?`${loc}, ${city}`:(loc||city);
   try{
-    let places=(await geocodeOSM(primary)).filter(isPlaceOSM);
-    if(!places.length&&loc&&city)places=(await geocodeOSM(loc)).filter(isPlaceOSM);
-    if(places.length){
-      // Prefiere el lugar cuya dirección menciona la ciudad escrita (desambigua homónimos lejanos)
-      const cl=city.toLowerCase();
-      let r=(loc&&city)?places.find(p=>JSON.stringify(p.address||{}).toLowerCase().includes(cl)):null;
-      r=r||places[0];
-      const display=(loc&&city)?`${loc}, ${city}`:osmName(r);
-      const ov=/ovalle/i.test(city)||/ovalle/i.test(JSON.stringify(r.address||{}));
-      await setLocation(+r.lat,+r.lon,display,ov,false);
-      return true;
+    if(loc&&city){
+      // 1) Ubico la ciudad → obtengo país (para restringir) y coordenadas de anclaje.
+      const cityArr=(await geocodeOSM(city)).filter(isPlaceOSM);
+      const c0=cityArr[0];
+      if(c0){
+        const cc=(c0.address&&c0.address.country_code)||"";
+        // 2) Busco la localidad SOLO en ese país y elijo la MÁS CERCANA a la ciudad.
+        const locArr=(await geocodeOSM(loc,cc)).filter(isPlaceOSM);
+        let best=null,bestD=Infinity;
+        for(const x of locArr){const d=distKm(+c0.lat,+c0.lon,+x.lat,+x.lon);if(d<bestD){bestD=d;best=x;}}
+        let lat,lon;
+        if(best&&bestD<=80){lat=+best.lat;lon=+best.lon;}   // localidad/sector real cerca de la ciudad
+        else{lat=+c0.lat;lon=+c0.lon;}                      // no está en el catálogo cerca → centro de la ciudad
+        const ov=/ovalle/i.test(city)||/ovalle/i.test(JSON.stringify((best||c0).address||{}));
+        await setLocation(lat,lon,`${loc}, ${city}`,ov,false);
+        return true;
+      }
+    } else {
+      const places=(await geocodeOSM(loc||city)).filter(isPlaceOSM);
+      if(places.length){const r=places[0];
+        const ov=/ovalle/i.test(city)||/ovalle/i.test(JSON.stringify(r.address||{}));
+        await setLocation(+r.lat,+r.lon,osmName(r),ov,false);
+        return true;}
     }
   }catch(e){/* si OSM no responde, usamos el respaldo */}
   return await searchPlaceOM(city,loc);
