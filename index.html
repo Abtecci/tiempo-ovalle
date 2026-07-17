@@ -43,6 +43,15 @@
     border:1px solid var(--stroke);border-radius:999px;padding:6px 12px;background:var(--card)}
   .badge b{color:var(--accent)}
 
+  .locbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .locbar .searchwrap{display:flex;gap:6px;flex:1;min-width:220px;max-width:440px}
+  .locbar input{flex:1;font-family:var(--sans);font-size:13.5px;border:1px solid var(--stroke);
+    border-radius:10px;padding:9px 12px;background:rgba(0,0,0,.25);color:var(--txt)}
+  .locbar input::placeholder{color:var(--txt2)}
+  .locbar input:focus{outline:2px solid var(--accent)}
+  .locbar button{padding:9px 13px;font-size:13px;border-radius:10px}
+  .locbar .note{margin-left:auto}
+
   .connbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     font-family:var(--mono);font-size:12px;color:var(--txt2);
     background:var(--card);border:1px solid var(--stroke);border-radius:12px;
@@ -222,10 +231,20 @@
 
 <div class="top anim" style="animation-delay:.05s">
   <div class="loc">
-    <h1>Ovalle, Región de Coquimbo</h1>
+    <h1 id="locName">Ovalle, Región de Coquimbo</h1>
     <div class="sub"><span class="livedot"></span><span id="nowStr">—</span></div>
   </div>
   <div class="badge">Ensamble Monte Carlo <b id="nMembers">4.000</b> escenarios · <span id="lastUpdate">—</span></div>
+</div>
+
+<div class="locbar anim" style="animation-delay:.06s">
+  <button id="btnGeo" class="secondary">📍 Usar mi ubicación</button>
+  <button id="btnOvalle" class="secondary" style="display:none">← Volver a Ovalle</button>
+  <div class="searchwrap">
+    <input id="citySearch" type="text" placeholder="Buscar otra ciudad…" autocomplete="off">
+    <button id="btnSearch">Buscar</button>
+  </div>
+  <span class="note" id="geoMsg"></span>
 </div>
 
 <div class="connbar anim" style="animation-delay:.08s">
@@ -341,8 +360,10 @@
 <script>
 "use strict";
 const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
-const LAT=-30.6031,LON=-71.203,TZ="America/Santiago";
+let LAT=-30.6031,LON=-71.203;
+const TZ="America/Santiago";
 const N=4000;
+let PLACE="Ovalle, Región de Coquimbo", isOvalle=true, geoTried=false;
 
 /* ================= ESTADO BASE (fallback sin internet) ================= */
 const BASE={
@@ -472,8 +493,8 @@ async function connectModels(){
       else setSt(stId,"err");
     }
     if(!okCount)throw new Error("ningún modelo entregó datos");
-    newSources["CEAZA"]={w:0.35,manual:true,
-      mm:(sameDates&&oldCeaza)?oldCeaza.mm.slice(0,D):ref.slice()};
+    if(isOvalle){newSources["CEAZA"]={w:0.35,manual:true,
+      mm:(sameDates&&oldCeaza)?oldCeaza.mm.slice(0,D):ref.slice()};}
     const probDia=[];
     for(let d=0;d<D;d++){let p=0,got=false;
       for(const[,model]of MODELS){
@@ -486,14 +507,16 @@ async function connectModels(){
         for(const[,model]of MODELS){const a=pickArr(daily,base,model,D);
           if(a&&a[d]!=null){s+=+a[d];c++}}
         out.push(c?Math.round(s/c):null)}return out};
+    const modelSources=Object.fromEntries(
+      MODELS.filter(m=>newSources[m[0]]).map(m=>[m[0],newSources[m[0]]]));
+    const sources=isOvalle?{"CEAZA":newSources["CEAZA"],...modelSources}:modelSources;
     state={updated:new Date().toLocaleString("es-CL",{dateStyle:"short",timeStyle:"short"})
-        +" · ECMWF/GFS/ICON en vivo"+(sameDates?" + CEAZA":""),
+        +" · ECMWF/GFS/ICON en vivo"+(isOvalle&&sameDates?" + CEAZA":""),
       dates,probDia,
       tmax:avg("temperature_2m_max").map(v=>v??15),
       tmin:avg("temperature_2m_min").map(v=>v??7),
       wind:avg("wind_speed_10m_max").map(v=>v??15),
-      sources:{"CEAZA":newSources["CEAZA"],...Object.fromEntries(
-        MODELS.filter(m=>newSources[m[0]]).map(m=>[m[0],newSources[m[0]]]))}};
+      sources};
     msg.innerHTML=`<b style="color:var(--ok)">✓ conectado</b> · ${okCount}/3 modelos · ${state.updated}`;
     document.getElementById("lastUpdate").textContent=state.updated;
     okEns=true;
@@ -1069,10 +1092,10 @@ function initMap(){
 function updateMap(){
   if(!map||!R)return;
   mapMarkers.forEach(m=>map.removeLayer(m));mapMarkers=[];
-  const D=R.D;const todayMM=R.daily.p50; // usamos perfil del ensamble como referencia regional
   const peak=R.daily.p50.indexOf(Math.max(...R.daily.p50));
-  PLACES.forEach((pl,i)=>{
-    // pequeña variación regional determinista para diferenciar puntos
+  const mainName=(PLACE.split(",")[0]||"Ubicación").trim();
+  const pts=isOvalle?PLACES:[{n:mainName,lat:LAT,lon:LON,main:true}];
+  pts.forEach((pl,i)=>{
     const f=pl.main?1:0.75+((i*37)%30)/100;
     const mm=Math.round(R.daily.p50[peak]*f);
     const col=rainColor(mm);
@@ -1081,9 +1104,10 @@ function updateMap(){
       fillColor:col,fillOpacity:.45}).addTo(map);
     c.bindPopup(`<b>${pl.n}</b><br>Máx día del evento: <b style="color:${col}">${mm} mm</b><br>`
       +`Prob. lluvia: ${Math.round(R.daily.pAny[peak]*100)}%<br>Viento hasta ${Math.round(state.wind[peak]||20)} km/h`);
-    if(pl.main)c.bindTooltip("Ovalle",{permanent:true,direction:"top",className:"note"});
+    if(pl.main)c.bindTooltip(pl.n,{permanent:true,direction:"top",className:"note"});
     mapMarkers.push(c);
   });
+  try{map.setView([isOvalle?-30.55:LAT,isOvalle?-71.05:LON],isOvalle?8:10);}catch(e){}
 }
 
 /* ================= RELOJ VIVO + REFRESCO HORARIO ================= */
@@ -1143,28 +1167,87 @@ async function loadState(){try{if(window.storage){
   if(r&&r.value){const s=JSON.parse(r.value);
     if(s.sources&&s.dates)state=s}}}catch(e){}}
 
+/* ================= UBICACIÓN (geolocalización + búsqueda) ================= */
+function applyLocationUI(){
+  $("locName").textContent=PLACE;
+  $("alertBox").style.display=isOvalle?"":"none";      // alerta CEAZA/DMC solo aplica a Ovalle
+  const ceaza=$("stCEAZA");if(ceaza)ceaza.style.display=isOvalle?"":"none";
+  $("btnOvalle").style.display=isOvalle?"none":"";
+}
+async function setLocation(lat,lon,name,ovalle){
+  LAT=lat;LON=lon;PLACE=name;isOvalle=!!ovalle;
+  applyLocationUI();
+  if(map){try{map.setView([lat,lon],ovalle?8:11);}catch(e){}}
+  await connectModels();   // re-descarga los modelos para la nueva ubicación
+}
+async function reverseGeocode(lat,lon){
+  const j=await fetchJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client`
+    +`?latitude=${lat}&longitude=${lon}&localityLanguage=es`,8000);
+  const parts=[j.city||j.locality,j.principalSubdivision,j.countryName].filter(Boolean);
+  return parts.join(", ")||"Tu ubicación";
+}
+function geolocate(auto){
+  const msg=$("geoMsg");
+  if(!navigator.geolocation){msg.textContent="Tu navegador no permite geolocalización.";return;}
+  msg.textContent="📡 Obteniendo tu ubicación…";
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const {latitude,longitude}=pos.coords;
+    let name="Tu ubicación";
+    try{name=await reverseGeocode(latitude,longitude);}catch(e){}
+    const ov=Math.abs(latitude+30.6031)<0.25&&Math.abs(longitude+71.203)<0.25;
+    msg.textContent="";
+    await setLocation(latitude,longitude,name,ov);
+  },err=>{
+    msg.textContent=auto?"":("No se pudo obtener tu ubicación ("
+      +(err.code===1?"permiso denegado":err.code===3?"tiempo agotado":"no disponible")
+      +"). Puedes buscar tu ciudad.");
+  },{enableHighAccuracy:false,timeout:10000,maximumAge:600000});
+}
+async function searchCity(q){
+  const msg=$("geoMsg");if(!q||!q.trim())return;
+  msg.textContent="🔎 Buscando…";
+  try{
+    const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
+      +`?name=${encodeURIComponent(q.trim())}&count=1&language=es&format=json`,8000);
+    const r=(j.results||[])[0];
+    if(!r){msg.textContent="No encontré esa ciudad. Prueba con otro nombre.";return;}
+    const name=[r.name,r.admin1,r.country].filter(Boolean).join(", ");
+    const ov=/ovalle/i.test(r.name||"");
+    msg.textContent="";$("citySearch").value="";
+    await setLocation(r.latitude,r.longitude,name,ov);
+  }catch(e){msg.textContent="Error al buscar la ciudad.";}
+}
+
 /* ================= EVENTOS E INICIO ================= */
 $("btnRecalc").addEventListener("click",async()=>{readTable();R=runModel();render();await saveState()});
 $("btnRefresh").addEventListener("click",connectModels);
 $("btnReset").addEventListener("click",async()=>{
+  LAT=-30.6031;LON=-71.203;PLACE="Ovalle, Región de Coquimbo";isOvalle=true;applyLocationUI();
   state=JSON.parse(JSON.stringify(BASE));
   $("lastUpdate").textContent=state.updated;
   buildTable();R=runModel();syncSliderToNow();render();await saveState()});
 $("timeSlider").addEventListener("input",e=>{setSelHour(+e.target.value);});
 $("btnPlay").addEventListener("click",togglePlay);
 $("btnNow").addEventListener("click",()=>{if(playing)togglePlay();setSelHour(nowHourIdx());});
+$("btnGeo").addEventListener("click",()=>geolocate(false));
+$("btnOvalle").addEventListener("click",()=>setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true));
+$("btnSearch").addEventListener("click",()=>searchCity($("citySearch").value));
+$("citySearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchCity(e.target.value);});
 bindHover();
 
 (async()=>{
   await loadState();
   $("nMembers").textContent=N.toLocaleString("es-CL");
   $("lastUpdate").textContent=state.updated;
+  applyLocationUI();
   buildTable();
   R=runModel();
   syncSliderToNow();
-  render();               // pinta al instante con lo guardado
+  render();               // pinta al instante con lo guardado (Ovalle por defecto)
   initMap();              // mapa
   connectModels();        // …y en paralelo descarga modelos + horario + aire
+  // Al cargar, intenta usar la ubicación del visitante (si concede permiso)
+  setTimeout(()=>{if(!geoTried){geoTried=true;geolocate(true);}},1400);
 })();
 </script>
 </body>
