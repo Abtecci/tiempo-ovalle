@@ -88,6 +88,18 @@
   .connbar .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--stroke);
     border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
   .connbar button{padding:5px 12px;font-size:12px;border-radius:8px;margin-left:auto}
+  @keyframes pulseGlow{0%,100%{box-shadow:0 4px 14px rgba(77,163,255,.40)}
+    50%{box-shadow:0 6px 24px rgba(77,163,255,.75)}}
+  #btnRefresh{margin-left:auto;display:inline-flex;align-items:center;gap:7px;
+    background:linear-gradient(135deg,#4DA3FF,#5BC0EB);color:#08182f;font-weight:750;
+    font-size:13px;padding:9px 17px;border:0;border-radius:11px;
+    box-shadow:0 4px 14px rgba(77,163,255,.45);animation:pulseGlow 2.6s ease-in-out infinite}
+  #btnRefresh:hover{filter:brightness(1.08);transform:translateY(-2px);
+    box-shadow:0 7px 22px rgba(77,163,255,.65)}
+  #btnRefresh .ic{display:inline-block;font-size:15px;line-height:1;transition:transform .5s}
+  #btnRefresh:hover .ic{transform:rotate(180deg)}
+  #btnRefresh.busy{animation:none}
+  #btnRefresh.busy .ic{animation:spin .8s linear infinite}
 
   .alert{display:flex;gap:12px;background:rgba(255,180,84,.12);
     border:1px solid rgba(255,180,84,.45);border-radius:14px;padding:13px 16px;
@@ -294,7 +306,7 @@
   <span class="st" id="stAUX"><span class="led"></span>Horario+Astro</span>
   <span class="st" id="stAIR"><span class="led"></span>Aire (AQI)</span>
   <span id="connMsg"><span class="spin"></span> conectando a modelos globales…</span>
-  <button id="btnRefresh" class="secondary">↻ Actualizar ahora</button>
+  <button id="btnRefresh"><span class="ic">↻</span> Actualizar ahora</button>
 </div>
 
 <div class="alert anim" style="animation-delay:.12s" id="alertBox">
@@ -1315,7 +1327,10 @@ async function popupGo(){
 
 /* ================= EVENTOS E INICIO ================= */
 $("btnRecalc").addEventListener("click",async()=>{readTable();R=runModel();render();await saveState()});
-$("btnRefresh").addEventListener("click",connectModels);
+$("btnRefresh").addEventListener("click",async()=>{
+  const b=$("btnRefresh");b.classList.add("busy");b.disabled=true;
+  try{await connectModels();}finally{b.classList.remove("busy");b.disabled=false;}
+});
 $("btnReset").addEventListener("click",async()=>{
   LAT=-30.6031;LON=-71.203;PLACE="Ovalle, Región de Coquimbo";isOvalle=true;regionView=true;applyLocationUI();
   state=JSON.parse(JSON.stringify(BASE));
