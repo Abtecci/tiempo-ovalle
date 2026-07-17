@@ -52,6 +52,12 @@
   .locbar button{padding:9px 13px;font-size:13px;border-radius:10px}
   .locbar .note{margin-left:auto}
 
+  .geoask{display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    background:rgba(77,163,255,.12);border:1px solid rgba(77,163,255,.4);border-radius:14px;
+    padding:12px 16px;margin-bottom:16px;font-size:14px}
+  .geoask .gbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .geoask button{padding:8px 14px;font-size:13px;border-radius:10px}
+
   .connbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     font-family:var(--mono);font-size:12px;color:var(--txt2);
     background:var(--card);border:1px solid var(--stroke);border-radius:12px;
@@ -245,6 +251,14 @@
     <button id="btnSearch">Buscar</button>
   </div>
   <span class="note" id="geoMsg"></span>
+</div>
+
+<div class="geoask" id="geoAsk">
+  <span>📍 ¿Quieres ver el tiempo de <b>tu ubicación actual</b> en vez de Ovalle?</span>
+  <div class="gbtns">
+    <button id="geoYes">Sí, usar mi ubicación</button>
+    <button id="geoNo" class="secondary">No, seguir en Ovalle</button>
+  </div>
 </div>
 
 <div class="connbar anim" style="animation-delay:.08s">
@@ -1233,6 +1247,8 @@ $("btnGeo").addEventListener("click",()=>geolocate(false));
 $("btnOvalle").addEventListener("click",()=>setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true));
 $("btnSearch").addEventListener("click",()=>searchCity($("citySearch").value));
 $("citySearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchCity(e.target.value);});
+$("geoYes").addEventListener("click",()=>{$("geoAsk").style.display="none";geolocate(false);});
+$("geoNo").addEventListener("click",()=>{$("geoAsk").style.display="none";});
 bindHover();
 
 (async()=>{
@@ -1246,8 +1262,8 @@ bindHover();
   render();               // pinta al instante con lo guardado (Ovalle por defecto)
   initMap();              // mapa
   connectModels();        // …y en paralelo descarga modelos + horario + aire
-  // Al cargar, intenta usar la ubicación del visitante (si concede permiso)
-  setTimeout(()=>{if(!geoTried){geoTried=true;geolocate(true);}},1400);
+  // Al cargar mostramos Ovalle y ofrecemos (sin forzar) usar la ubicación del visitante
+  setTimeout(()=>{if(!geoTried){geoTried=true;$("geoAsk").style.display="flex";}},1200);
 })();
 </script>
 </body>
