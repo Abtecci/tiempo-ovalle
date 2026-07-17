@@ -1291,19 +1291,29 @@ async function searchPlace(city,loc){
     await setLocation(r.latitude,r.longitude,display,ov,false);
     return true;
   }
-  // Ciudad + localidad: ubico la ciudad y elijo la localidad MÁS CERCANA a ella
+  // Ciudad + localidad: ubico la ciudad y elijo la localidad/comuna MÁS CERCANA a ella.
   const cityRes=await geocode(city,6);
   if(!cityRes.length)return false;
   const c0=cityRes[0];                       // centro de la ciudad
-  const locRes=await geocode(loc,10);
+  const cc=c0.country_code, reg=(c0.admin1||"").toLowerCase();
+  const locRes=await geocode(loc,20);
+  // Solo lugares poblados / comunas / localidades (GeoNames) — NUNCA calles, rutas ni puntos varios.
+  const isPlace=fc=>/^(PPL|ADM|LCTY|STLMT|PPLX|PPLA|PPLL|PPLR|PPLS)/i.test(fc||"");
+  let cand=locRes.filter(x=>isPlace(x.feature_code));
+  if(!cand.length)cand=locRes;               // si la API no trae tipo, no descartamos todo
+  // Mismo país que la ciudad, y de preferencia misma región (admin1)
+  let pool=cand.filter(x=>!cc||x.country_code===cc); if(!pool.length)pool=cand;
+  const sameReg=pool.filter(x=>reg&&(x.admin1||"").toLowerCase()===reg);
+  const search=sameReg.length?sameReg:pool;
+  // El más cercano a la ciudad
   let best=null,bestD=Infinity;
-  for(const x of locRes){
+  for(const x of search){
     const d=distKm(c0.latitude,c0.longitude,x.latitude,x.longitude);
     if(d<bestD){bestD=d;best=x;}
   }
-  let lat,lon,exact;
-  if(best&&bestD<=60){lat=best.latitude;lon=best.longitude;exact=true;}   // localidad real cerca de la ciudad
-  else{lat=c0.latitude;lon=c0.longitude;exact=false;}                     // no existe cerca → centro de la ciudad
+  let lat,lon;
+  if(best&&bestD<=80){lat=best.latitude;lon=best.longitude;}   // localidad/comuna real cerca de la ciudad
+  else{lat=c0.latitude;lon=c0.longitude;}                      // no está en el catálogo → centro de la ciudad
   const display=`${loc}, ${city}`;
   const ov=/ovalle/i.test(city)||/ovalle/i.test(c0.admin2||"")||/ovalle/i.test(c0.name||"");
   await setLocation(lat,lon,display,ov,false);
