@@ -403,7 +403,7 @@ const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
 let LAT=-30.6031,LON=-71.203;
 const TZ="America/Santiago";
 const N=4000;
-let PLACE="Ovalle, Región de Coquimbo", isOvalle=true, geoTried=false;
+let PLACE="Ovalle, Región de Coquimbo", isOvalle=true, geoTried=false, regionView=true;
 
 /* ================= ESTADO BASE (fallback sin internet) ================= */
 const BASE={
@@ -1134,7 +1134,10 @@ function updateMap(){
   mapMarkers.forEach(m=>map.removeLayer(m));mapMarkers=[];
   const peak=R.daily.p50.indexOf(Math.max(...R.daily.p50));
   const mainName=(PLACE.split(",")[0]||"Ubicación").trim();
-  const pts=isOvalle?PLACES:[{n:mainName,lat:LAT,lon:LON,main:true}];
+  // Vista regional (varias ciudades) SOLO cuando es Ovalle por defecto; si se buscó un
+  // punto concreto (localidad/comuna/ciudad) el mapa se centra ahí con un marcador.
+  const region=regionView&&isOvalle;
+  const pts=region?PLACES:[{n:mainName,lat:LAT,lon:LON,main:true}];
   pts.forEach((pl,i)=>{
     const f=pl.main?1:0.75+((i*37)%30)/100;
     const mm=Math.round(R.daily.p50[peak]*f);
@@ -1147,7 +1150,7 @@ function updateMap(){
     if(pl.main)c.bindTooltip(pl.n,{permanent:true,direction:"top",className:"note"});
     mapMarkers.push(c);
   });
-  try{map.setView([isOvalle?-30.55:LAT,isOvalle?-71.05:LON],isOvalle?8:10);}catch(e){}
+  try{map.setView(region?[-30.55,-71.05]:[LAT,LON], region?8:12);}catch(e){}
 }
 
 /* ================= RELOJ VIVO + REFRESCO HORARIO ================= */
@@ -1214,11 +1217,10 @@ function applyLocationUI(){
   const ceaza=$("stCEAZA");if(ceaza)ceaza.style.display=isOvalle?"":"none";
   $("btnOvalle").style.display=isOvalle?"none":"";
 }
-async function setLocation(lat,lon,name,ovalle){
-  LAT=lat;LON=lon;PLACE=name;isOvalle=!!ovalle;
+async function setLocation(lat,lon,name,ovalle,region){
+  LAT=lat;LON=lon;PLACE=name;isOvalle=!!ovalle;regionView=!!region;
   applyLocationUI();
-  if(map){try{map.setView([lat,lon],ovalle?8:11);}catch(e){}}
-  await connectModels();   // re-descarga los modelos para la nueva ubicación
+  await connectModels();   // re-descarga los modelos y recentra el mapa (updateMap)
 }
 async function reverseGeocode(lat,lon){
   const j=await fetchJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client`
@@ -1252,24 +1254,47 @@ async function searchCity(q){
     if(ok)$("citySearch").value="";
   }catch(e){msg.textContent="Error al buscar la ciudad.";}
 }
+// Geocodificador (solo lugares poblados: ciudades, pueblos, localidades — no calles)
+async function geocode(name,count){
+  if(!name)return [];
+  const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
+    +`?name=${encodeURIComponent(name)}&count=${count||10}&language=es&format=json`,9000);
+  return j.results||[];
+}
+function distKm(la1,lo1,la2,lo2){const R=6371,r=Math.PI/180;
+  const dLa=(la2-la1)*r,dLo=(lo2-lo1)*r;
+  const x=Math.sin(dLa/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));}
 // Busca por ciudad + localidad (comuna). Devuelve true si encontró.
 async function searchPlace(city,loc){
   city=(city||"").trim();loc=(loc||"").trim();
-  const q=loc||city;if(!q)return false;
-  const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
-    +`?name=${encodeURIComponent(q)}&count=10&language=es&format=json`,9000);
-  const results=j.results||[];
-  if(!results.length)return false;
-  let r=results[0];
-  if(loc&&city){
-    const cl=city.toLowerCase();
-    r=results.find(x=>[x.admin1,x.admin2,x.admin3,x.name]
-      .filter(Boolean).some(v=>v.toLowerCase().includes(cl)))||results[0];
+  if(!city&&!loc)return false;
+  // Solo localidad (o solo ciudad): geocodificado directo
+  if(!(loc&&city)){
+    const res=await geocode(loc||city,6);
+    if(!res.length)return false;
+    const r=res[0];
+    const display=[r.name,r.admin1,r.country].filter(Boolean).join(", ");
+    const ov=/ovalle/i.test(r.name||"")||/ovalle/i.test(city);
+    await setLocation(r.latitude,r.longitude,display,ov,false);
+    return true;
   }
-  const display=(loc&&city)?`${loc}, ${city}`
-    :[r.name,r.admin1,r.country].filter(Boolean).join(", ");
-  const ov=/ovalle/i.test(r.name||"")||/ovalle/i.test(city);
-  await setLocation(r.latitude,r.longitude,display,ov);
+  // Ciudad + localidad: ubico la ciudad y elijo la localidad MÁS CERCANA a ella
+  const cityRes=await geocode(city,6);
+  if(!cityRes.length)return false;
+  const c0=cityRes[0];                       // centro de la ciudad
+  const locRes=await geocode(loc,10);
+  let best=null,bestD=Infinity;
+  for(const x of locRes){
+    const d=distKm(c0.latitude,c0.longitude,x.latitude,x.longitude);
+    if(d<bestD){bestD=d;best=x;}
+  }
+  let lat,lon,exact;
+  if(best&&bestD<=60){lat=best.latitude;lon=best.longitude;exact=true;}   // localidad real cerca de la ciudad
+  else{lat=c0.latitude;lon=c0.longitude;exact=false;}                     // no existe cerca → centro de la ciudad
+  const display=`${loc}, ${city}`;
+  const ov=/ovalle/i.test(city)||/ovalle/i.test(c0.admin2||"")||/ovalle/i.test(c0.name||"");
+  await setLocation(lat,lon,display,ov,false);
   return true;
 }
 
@@ -1292,20 +1317,20 @@ async function popupGo(){
 $("btnRecalc").addEventListener("click",async()=>{readTable();R=runModel();render();await saveState()});
 $("btnRefresh").addEventListener("click",connectModels);
 $("btnReset").addEventListener("click",async()=>{
-  LAT=-30.6031;LON=-71.203;PLACE="Ovalle, Región de Coquimbo";isOvalle=true;applyLocationUI();
+  LAT=-30.6031;LON=-71.203;PLACE="Ovalle, Región de Coquimbo";isOvalle=true;regionView=true;applyLocationUI();
   state=JSON.parse(JSON.stringify(BASE));
   $("lastUpdate").textContent=state.updated;
   buildTable();R=runModel();syncSliderToNow();render();await saveState()});
 $("timeSlider").addEventListener("input",e=>{setSelHour(+e.target.value);});
 $("btnPlay").addEventListener("click",togglePlay);
 $("btnNow").addEventListener("click",()=>{if(playing)togglePlay();setSelHour(nowHourIdx());});
-$("btnOvalle").addEventListener("click",()=>setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true));
+$("btnOvalle").addEventListener("click",()=>setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true,true));
 $("btnSearch").addEventListener("click",()=>searchCity($("citySearch").value));
 $("citySearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchCity(e.target.value);});
 $("btnChangeLoc").addEventListener("click",openLocModal);
 $("popGo").addEventListener("click",popupGo);
 $("popOvalle").addEventListener("click",()=>{closeLocModal();
-  if(!isOvalle)setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true);});
+  if(!isOvalle||!regionView)setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true,true);});
 ["popCity","popLoc"].forEach(id=>$(id).addEventListener("keydown",e=>{if(e.key==="Enter")popupGo();}));
 $("locModal").addEventListener("click",e=>{if(e.target===$("locModal"))closeLocModal();});
 bindHover();
