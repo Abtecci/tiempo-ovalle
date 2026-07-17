@@ -1266,22 +1266,61 @@ async function searchCity(q){
     if(ok)$("citySearch").value="";
   }catch(e){msg.textContent="Error al buscar la ciudad.";}
 }
-// Geocodificador (solo lugares poblados: ciudades, pueblos, localidades — no calles)
+// Geocodificador Open-Meteo (respaldo; solo trae lugares poblados grandes)
 async function geocode(name,count){
   if(!name)return [];
   const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
     +`?name=${encodeURIComponent(name)}&count=${count||10}&language=es&format=json`,9000);
   return j.results||[];
 }
+// Geocodificador OpenStreetMap/Nominatim (cobertura amplia de localidades, sectores y comunas)
+async function geocodeOSM(q){
+  if(!q)return [];
+  const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
+    +`&format=json&addressdetails=1&limit=12&accept-language=es`;
+  const arr=await fetchJSON(url,10000);
+  return Array.isArray(arr)?arr:[];
+}
+// Acepta SOLO lugares (ciudad/pueblo/localidad/aldea/barrio/sector) o comunas/áreas administrativas.
+// Excluye calles (class "highway"), rutas, edificios, comercios, etc.
+function isPlaceOSM(r){
+  const cls=r.class||r.category||"";
+  if(cls==="place")return true;
+  if(cls==="boundary"&&r.type==="administrative")return true;
+  return false;
+}
+function osmName(r){const a=r.address||{};
+  const n=a.village||a.hamlet||a.town||a.suburb||a.neighbourhood||a.city||a.locality||a.municipality
+    ||r.name||(r.display_name||"").split(",")[0];
+  return [n,a.state,a.country].filter(Boolean).join(", ");}
 function distKm(la1,lo1,la2,lo2){const R=6371,r=Math.PI/180;
   const dLa=(la2-la1)*r,dLo=(lo2-lo1)*r;
   const x=Math.sin(dLa/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;
   return 2*R*Math.asin(Math.sqrt(x));}
-// Busca por ciudad + localidad (comuna). Devuelve true si encontró.
+
+// Busca por ciudad + localidad/comuna. Primero OSM (mejor cobertura, SIN calles); si falla, Open-Meteo.
 async function searchPlace(city,loc){
   city=(city||"").trim();loc=(loc||"").trim();
   if(!city&&!loc)return false;
-  // Solo localidad (o solo ciudad): geocodificado directo
+  const primary=(loc&&city)?`${loc}, ${city}`:(loc||city);
+  try{
+    let places=(await geocodeOSM(primary)).filter(isPlaceOSM);
+    if(!places.length&&loc&&city)places=(await geocodeOSM(loc)).filter(isPlaceOSM);
+    if(places.length){
+      // Prefiere el lugar cuya dirección menciona la ciudad escrita (desambigua homónimos lejanos)
+      const cl=city.toLowerCase();
+      let r=(loc&&city)?places.find(p=>JSON.stringify(p.address||{}).toLowerCase().includes(cl)):null;
+      r=r||places[0];
+      const display=(loc&&city)?`${loc}, ${city}`:osmName(r);
+      const ov=/ovalle/i.test(city)||/ovalle/i.test(JSON.stringify(r.address||{}));
+      await setLocation(+r.lat,+r.lon,display,ov,false);
+      return true;
+    }
+  }catch(e){/* si OSM no responde, usamos el respaldo */}
+  return await searchPlaceOM(city,loc);
+}
+// Respaldo con Open-Meteo (por si Nominatim no responde)
+async function searchPlaceOM(city,loc){
   if(!(loc&&city)){
     const res=await geocode(loc||city,6);
     if(!res.length)return false;
@@ -1291,29 +1330,21 @@ async function searchPlace(city,loc){
     await setLocation(r.latitude,r.longitude,display,ov,false);
     return true;
   }
-  // Ciudad + localidad: ubico la ciudad y elijo la localidad/comuna MÁS CERCANA a ella.
   const cityRes=await geocode(city,6);
   if(!cityRes.length)return false;
-  const c0=cityRes[0];                       // centro de la ciudad
+  const c0=cityRes[0];
   const cc=c0.country_code, reg=(c0.admin1||"").toLowerCase();
   const locRes=await geocode(loc,20);
-  // Solo lugares poblados / comunas / localidades (GeoNames) — NUNCA calles, rutas ni puntos varios.
   const isPlace=fc=>/^(PPL|ADM|LCTY|STLMT|PPLX|PPLA|PPLL|PPLR|PPLS)/i.test(fc||"");
-  let cand=locRes.filter(x=>isPlace(x.feature_code));
-  if(!cand.length)cand=locRes;               // si la API no trae tipo, no descartamos todo
-  // Mismo país que la ciudad, y de preferencia misma región (admin1)
+  let cand=locRes.filter(x=>isPlace(x.feature_code)); if(!cand.length)cand=locRes;
   let pool=cand.filter(x=>!cc||x.country_code===cc); if(!pool.length)pool=cand;
   const sameReg=pool.filter(x=>reg&&(x.admin1||"").toLowerCase()===reg);
   const search=sameReg.length?sameReg:pool;
-  // El más cercano a la ciudad
   let best=null,bestD=Infinity;
-  for(const x of search){
-    const d=distKm(c0.latitude,c0.longitude,x.latitude,x.longitude);
-    if(d<bestD){bestD=d;best=x;}
-  }
+  for(const x of search){const d=distKm(c0.latitude,c0.longitude,x.latitude,x.longitude);
+    if(d<bestD){bestD=d;best=x;}}
   let lat,lon;
-  if(best&&bestD<=80){lat=best.latitude;lon=best.longitude;}   // localidad/comuna real cerca de la ciudad
-  else{lat=c0.latitude;lon=c0.longitude;}                      // no está en el catálogo → centro de la ciudad
+  if(best&&bestD<=80){lat=best.latitude;lon=best.longitude;}else{lat=c0.latitude;lon=c0.longitude;}
   const display=`${loc}, ${city}`;
   const ov=/ovalle/i.test(city)||/ovalle/i.test(c0.admin2||"")||/ovalle/i.test(c0.name||"");
   await setLocation(lat,lon,display,ov,false);
