@@ -58,6 +58,24 @@
   .geoask .gbtns{display:flex;gap:8px;flex-wrap:wrap}
   .geoask button{padding:8px 14px;font-size:13px;border-radius:10px}
 
+  .modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+    background:rgba(6,12,26,.74);backdrop-filter:blur(4px);padding:18px}
+  .modal.show{display:flex}
+  .modal .box{background:linear-gradient(180deg,#1b2c50,#142240);border:1px solid var(--stroke);
+    border-radius:18px;padding:22px;max-width:430px;width:100%;box-shadow:0 24px 70px rgba(0,0,0,.55);
+    animation:fadeUp .4s ease}
+  .modal h3{font-size:18.5px;font-weight:650;margin-bottom:6px}
+  .modal p{font-size:13.5px;color:var(--txt2);margin-bottom:8px;line-height:1.5}
+  .modal label{font-size:11.5px;color:var(--txt2);display:block;margin:12px 0 4px;
+    text-transform:uppercase;letter-spacing:.06em}
+  .modal input{width:100%;font-family:var(--sans);font-size:14.5px;border:1px solid var(--stroke);
+    border-radius:10px;padding:11px 12px;background:rgba(0,0,0,.28);color:var(--txt)}
+  .modal input::placeholder{color:var(--txt2)}
+  .modal input:focus{outline:2px solid var(--accent)}
+  .modal .mbtns{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+  .modal .mbtns button{flex:1;min-width:130px;padding:12px 14px;border-radius:10px}
+  .modal .mmsg{font-size:12.5px;color:var(--warn);min-height:16px;margin-top:9px}
+
   .connbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     font-family:var(--mono);font-size:12px;color:var(--txt2);
     background:var(--card);border:1px solid var(--stroke);border-radius:12px;
@@ -233,6 +251,22 @@
 </head>
 <body>
 <canvas id="bgFx"></canvas><div id="flash"></div>
+
+<div class="modal" id="locModal">
+  <div class="box">
+    <h3>📍 ¿De qué lugar quieres ver el tiempo?</h3>
+    <p>Ingresa tu <b>ciudad</b> y, si quieres, tu <b>localidad o comuna</b> para un pronóstico más preciso.</p>
+    <label for="popCity">Ciudad</label>
+    <input id="popCity" type="text" placeholder="Ej: Ovalle" autocomplete="off">
+    <label for="popLoc">Localidad / Comuna (opcional)</label>
+    <input id="popLoc" type="text" placeholder="Ej: Sotaquí, Barraza, El Palqui…" autocomplete="off">
+    <div class="mmsg" id="popMsg"></div>
+    <div class="mbtns">
+      <button id="popGo">Ver el tiempo</button>
+      <button id="popOvalle" class="secondary">Ver Ovalle</button>
+    </div>
+  </div>
+</div>
 <div class="wrap">
 
 <div class="top anim" style="animation-delay:.05s">
@@ -244,21 +278,13 @@
 </div>
 
 <div class="locbar anim" style="animation-delay:.06s">
-  <button id="btnGeo" class="secondary">📍 Usar mi ubicación</button>
+  <button id="btnChangeLoc" class="secondary">📍 Cambiar ubicación</button>
   <button id="btnOvalle" class="secondary" style="display:none">← Volver a Ovalle</button>
   <div class="searchwrap">
     <input id="citySearch" type="text" placeholder="Buscar otra ciudad…" autocomplete="off">
     <button id="btnSearch">Buscar</button>
   </div>
   <span class="note" id="geoMsg"></span>
-</div>
-
-<div class="geoask" id="geoAsk">
-  <span>📍 ¿Quieres ver el tiempo de <b>tu ubicación actual</b> en vez de Ovalle?</span>
-  <div class="gbtns">
-    <button id="geoYes">Sí, usar mi ubicación</button>
-    <button id="geoNo" class="secondary">No, seguir en Ovalle</button>
-  </div>
 </div>
 
 <div class="connbar anim" style="animation-delay:.08s">
@@ -1221,15 +1247,45 @@ async function searchCity(q){
   const msg=$("geoMsg");if(!q||!q.trim())return;
   msg.textContent="🔎 Buscando…";
   try{
-    const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
-      +`?name=${encodeURIComponent(q.trim())}&count=1&language=es&format=json`,8000);
-    const r=(j.results||[])[0];
-    if(!r){msg.textContent="No encontré esa ciudad. Prueba con otro nombre.";return;}
-    const name=[r.name,r.admin1,r.country].filter(Boolean).join(", ");
-    const ov=/ovalle/i.test(r.name||"");
-    msg.textContent="";$("citySearch").value="";
-    await setLocation(r.latitude,r.longitude,name,ov);
+    const ok=await searchPlace(q.trim(),"");
+    msg.textContent=ok?"":"No encontré esa ciudad. Prueba con otro nombre.";
+    if(ok)$("citySearch").value="";
   }catch(e){msg.textContent="Error al buscar la ciudad.";}
+}
+// Busca por ciudad + localidad (comuna). Devuelve true si encontró.
+async function searchPlace(city,loc){
+  city=(city||"").trim();loc=(loc||"").trim();
+  const q=loc||city;if(!q)return false;
+  const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
+    +`?name=${encodeURIComponent(q)}&count=10&language=es&format=json`,9000);
+  const results=j.results||[];
+  if(!results.length)return false;
+  let r=results[0];
+  if(loc&&city){
+    const cl=city.toLowerCase();
+    r=results.find(x=>[x.admin1,x.admin2,x.admin3,x.name]
+      .filter(Boolean).some(v=>v.toLowerCase().includes(cl)))||results[0];
+  }
+  const display=(loc&&city)?`${loc}, ${city}`
+    :[r.name,r.admin1,r.country].filter(Boolean).join(", ");
+  const ov=/ovalle/i.test(r.name||"")||/ovalle/i.test(city);
+  await setLocation(r.latitude,r.longitude,display,ov);
+  return true;
+}
+
+/* ================= POPUP DE UBICACIÓN ================= */
+function openLocModal(){$("popMsg").textContent="";$("locModal").classList.add("show");
+  setTimeout(()=>{try{$("popCity").focus();}catch(e){}},120);}
+function closeLocModal(){$("locModal").classList.remove("show");}
+async function popupGo(){
+  const city=$("popCity").value,loc=$("popLoc").value,msg=$("popMsg");
+  if(!city.trim()&&!loc.trim()){msg.textContent="Escribe al menos la ciudad.";return;}
+  msg.textContent="🔎 Buscando la ubicación…";
+  try{
+    const ok=await searchPlace(city,loc);
+    if(ok){msg.textContent="";closeLocModal();}
+    else msg.textContent="No encontré ese lugar. Revisa el nombre e intenta de nuevo.";
+  }catch(e){msg.textContent="Error de conexión al buscar. Intenta otra vez.";}
 }
 
 /* ================= EVENTOS E INICIO ================= */
@@ -1243,12 +1299,15 @@ $("btnReset").addEventListener("click",async()=>{
 $("timeSlider").addEventListener("input",e=>{setSelHour(+e.target.value);});
 $("btnPlay").addEventListener("click",togglePlay);
 $("btnNow").addEventListener("click",()=>{if(playing)togglePlay();setSelHour(nowHourIdx());});
-$("btnGeo").addEventListener("click",()=>geolocate(false));
 $("btnOvalle").addEventListener("click",()=>setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true));
 $("btnSearch").addEventListener("click",()=>searchCity($("citySearch").value));
 $("citySearch").addEventListener("keydown",e=>{if(e.key==="Enter")searchCity(e.target.value);});
-$("geoYes").addEventListener("click",()=>{$("geoAsk").style.display="none";geolocate(false);});
-$("geoNo").addEventListener("click",()=>{$("geoAsk").style.display="none";});
+$("btnChangeLoc").addEventListener("click",openLocModal);
+$("popGo").addEventListener("click",popupGo);
+$("popOvalle").addEventListener("click",()=>{closeLocModal();
+  if(!isOvalle)setLocation(-30.6031,-71.203,"Ovalle, Región de Coquimbo",true);});
+["popCity","popLoc"].forEach(id=>$(id).addEventListener("keydown",e=>{if(e.key==="Enter")popupGo();}));
+$("locModal").addEventListener("click",e=>{if(e.target===$("locModal"))closeLocModal();});
 bindHover();
 
 (async()=>{
@@ -1262,8 +1321,8 @@ bindHover();
   render();               // pinta al instante con lo guardado (Ovalle por defecto)
   initMap();              // mapa
   connectModels();        // …y en paralelo descarga modelos + horario + aire
-  // Al cargar mostramos Ovalle y ofrecemos (sin forzar) usar la ubicación del visitante
-  setTimeout(()=>{if(!geoTried){geoTried=true;$("geoAsk").style.display="flex";}},1200);
+  // Al cargar mostramos Ovalle de fondo y abrimos el popup para elegir ciudad/localidad
+  setTimeout(()=>{if(!geoTried){geoTried=true;openLocModal();}},900);
 })();
 </script>
 </body>
