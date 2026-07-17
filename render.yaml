@@ -1,0 +1,12 @@
+# Configuración para desplegar como Sitio Estático en Render.com
+# Render detecta este archivo automáticamente (Blueprint).
+services:
+  - type: web
+    name: tiempo-ovalle-limari
+    runtime: static
+    buildCommand: "echo sin-build"
+    staticPublishPath: .
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
