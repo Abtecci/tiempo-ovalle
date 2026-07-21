@@ -5,19 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>El Tiempo en Ovalle — Vigía Limarí PRO (modelos globales en vivo)</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --sky-top:#131f3a; --sky-mid:#1c2f55; --sky-low:#24406e;
-    --card:rgba(255,255,255,.07); --stroke:rgba(255,255,255,.14);
+    --sky-top:#0d1730; --sky-mid:#16274a; --sky-low:#203a63;
+    --card:rgba(255,255,255,.065); --card2:rgba(255,255,255,.10); --stroke:rgba(255,255,255,.13);
     --txt:#EAF1FB; --txt2:#9FB2D0; --accent:#4DA3FF; --rain:#5BC0EB;
     --warn:#FFB454; --danger:#FF7A6B; --ok:#57E39A; --uv:#B98CFF; --aqi:#7CE0C7;
-    --sans:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    --orange:#FF9E5B;
+    --sans:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    --head:"Space Grotesk","Inter","Segoe UI",system-ui,sans-serif;
     --mono:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+    --shadow:0 18px 50px rgba(0,0,0,.40);
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  html{background:#0d1730}  /* base sólida: nunca se ve blanco aunque el degradado use attachment fijo */
   body{font-family:var(--sans);color:var(--txt);min-height:100vh;overflow-x:hidden;
     background:linear-gradient(180deg,var(--sky-top),var(--sky-mid) 45%,var(--sky-low));
-    background-attachment:fixed;transition:background 1.2s ease}
+    background-attachment:fixed;transition:background 1.2s ease;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  /* Aurora animada de fondo (detrás del canvas de escena) */
+  #aurora{position:fixed;inset:-25% -15% auto -15%;height:85vh;z-index:0;pointer-events:none;
+    filter:blur(70px);opacity:.6;will-change:transform;
+    background:
+      radial-gradient(38% 55% at 18% 28%,rgba(77,163,255,.40),transparent 70%),
+      radial-gradient(42% 52% at 82% 18%,rgba(185,140,255,.34),transparent 70%),
+      radial-gradient(48% 58% at 62% 82%,rgba(91,192,235,.30),transparent 72%);
+    animation:auroraShift 20s ease-in-out infinite alternate}
+  @keyframes auroraShift{0%{transform:translate3d(-4%,0,0) scale(1.05)}
+    100%{transform:translate3d(6%,4%,0) scale(1.18)}}
+  @media(prefers-reduced-motion:reduce){#aurora{animation:none}}
   #bgFx{position:fixed;inset:0;z-index:0;pointer-events:none}
   #flash{position:fixed;inset:0;z-index:1;pointer-events:none;background:#cfe4ff;
     opacity:0;transition:opacity .08s}
@@ -259,10 +278,99 @@
   .note{font-size:12px;color:var(--txt2);font-family:var(--mono)}
   footer{font-size:12px;color:var(--txt2);border-top:1px solid var(--stroke);
     padding-top:14px;line-height:1.6}
+
+  /* ═══════════════ CAPA VISUAL MODERNA 2026 ═══════════════ */
+  .wrap{max-width:1200px}
+  /* Encabezado con título en gradiente */
+  .loc h1{font-family:var(--head);font-weight:700;letter-spacing:-.02em;
+    background:linear-gradient(100deg,#ffffff 8%,#A9CBFF 52%,#C9B3FF);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 2px 22px rgba(77,163,255,.25))}
+  .loc .sub{font-size:14px}
+  @keyframes glowdot{0%,100%{box-shadow:0 0 7px 1px rgba(87,227,154,.55)}50%{box-shadow:0 0 12px 3px rgba(87,227,154,.18)}}
+  .livedot{animation:blink 2s infinite,glowdot 2s infinite}
+  .badge{background:linear-gradient(180deg,var(--card2),var(--card));backdrop-filter:blur(10px);
+    box-shadow:0 4px 16px rgba(0,0,0,.2)}
+  h2.sec{font-family:var(--head);letter-spacing:-.01em}
+
+  /* Barra de conexión: chips con LED */
+  .connbar{background:linear-gradient(180deg,var(--card2),var(--card));box-shadow:0 6px 20px rgba(0,0,0,.18)}
+  .connbar .st{padding:4px 9px;border-radius:999px;background:rgba(0,0,0,.20);border:1px solid transparent;transition:.25s}
+  .connbar .st.ok{border-color:rgba(87,227,154,.35);background:rgba(87,227,154,.09)}
+  .connbar .st.err{border-color:rgba(255,122,107,.35);background:rgba(255,122,107,.09)}
+  .connbar .st.busy{border-color:rgba(255,180,84,.35);background:rgba(255,180,84,.09)}
+  .connbar .st.ok .led{box-shadow:0 0 8px 1px rgba(87,227,154,.7)}
+
+  /* Tarjetas con más profundidad y filo de luz superior */
+  .card{background:linear-gradient(180deg,var(--card2),var(--card));box-shadow:var(--shadow);
+    position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);opacity:.55}
+  .card:hover{transform:translateY(-2px)}
+
+  /* Hero "ahora" */
+  .now .temp{font-family:var(--head);font-weight:600;
+    background:linear-gradient(165deg,#ffffff,#9FC0FF);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .now .temp sup{-webkit-text-fill-color:var(--txt2)}
+  .now .cond{font-weight:600}
+  .measured{font-family:var(--mono);font-size:11px;color:var(--ok);
+    border:1px solid rgba(87,227,154,.4);background:rgba(87,227,154,.10);
+    border-radius:999px;padding:2px 8px;margin-left:8px;vertical-align:3px;white-space:nowrap;
+    animation:blink 2.8s infinite}
+  .kv{background:rgba(0,0,0,.20);border:1px solid rgba(255,255,255,.05)}
+
+  /* ══ ALERTA AUTOMÁTICA POR NIVELES ══ */
+  .alert{align-items:flex-start;border-radius:16px;position:relative;overflow:hidden;
+    box-shadow:0 12px 32px rgba(0,0,0,.28);transition:background .4s,border-color .4s}
+  .alert .ic{font-size:26px;line-height:1;margin-top:1px;flex:0 0 auto}
+  .albody{flex:1;min-width:0}
+  .altitle{font-size:15.5px;font-weight:700;margin-bottom:4px;font-family:var(--head)}
+  .alsub{display:block;font-family:var(--mono);font-size:10.5px;color:var(--txt2);font-weight:400;letter-spacing:.03em;margin-top:1px}
+  #alertText{font-size:14px;line-height:1.55;color:var(--txt2)}
+  #alertText b{color:#fff;font-weight:600}
+  .alchips{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+  .alchip{font-family:var(--mono);font-size:11.5px;padding:4px 10px;border-radius:999px;
+    background:rgba(0,0,0,.24);border:1px solid var(--stroke);white-space:nowrap}
+  .allinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .allinks a{font-size:12.5px;font-weight:600;text-decoration:none;color:var(--txt);
+    padding:7px 12px;border-radius:10px;background:rgba(255,255,255,.06);
+    border:1px solid var(--stroke);transition:.2s}
+  .allinks a:hover{background:rgba(255,255,255,.14);transform:translateY(-2px);border-color:rgba(255,255,255,.32)}
+  .alert.lvl-0{background:linear-gradient(180deg,rgba(87,227,154,.11),rgba(87,227,154,.04));
+    border-color:rgba(87,227,154,.4);border-left:4px solid var(--ok)}
+  .alert.lvl-0 .altitle{color:var(--ok)}
+  .alert.lvl-1{background:linear-gradient(180deg,rgba(255,180,84,.14),rgba(255,180,84,.05));
+    border-color:rgba(255,180,84,.45);border-left:4px solid var(--warn)}
+  .alert.lvl-2{background:linear-gradient(180deg,rgba(255,158,91,.16),rgba(255,158,91,.06));
+    border-color:rgba(255,158,91,.5);border-left:4px solid var(--orange)}
+  .alert.lvl-3{background:linear-gradient(180deg,rgba(255,122,107,.18),rgba(255,122,107,.07));
+    border-color:rgba(255,122,107,.6);border-left:4px solid var(--danger);
+    animation:fadeUp .7s forwards,alertPulse 2.6s 1.2s infinite}
+  .alert.lvl-2 .ic,.alert.lvl-3 .ic{animation:drop 1.9s ease-in-out infinite}
+  @keyframes alertPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,122,107,.35)}50%{box-shadow:0 0 0 11px rgba(255,122,107,0)}}
+
+  /* Widgets y días: filo de luz + realce */
+  .w{background:linear-gradient(180deg,var(--card2),var(--card));position:relative;overflow:hidden}
+  .w::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);opacity:.5}
+  .day:hover{box-shadow:0 12px 26px rgba(0,0,0,.3)}
+  .verdictcard{border-left:5px solid var(--rain)}
+  .verdict em{color:#BcE0FF;border-bottom-color:var(--accent)}
+
+  /* Botones y campos más suaves */
+  button{border-radius:11px}
+  .locbar input,.modal input{background:rgba(0,0,0,.28);border-radius:11px}
+  /* Scrollbars finos */
+  *::-webkit-scrollbar{height:8px;width:8px}
+  *::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:99px}
+  *::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28)}
+  /* Mapa con marco suave */
+  #map{box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
 </style>
 </head>
 <body>
-<canvas id="bgFx"></canvas><div id="flash"></div>
+<div id="aurora"></div><canvas id="bgFx"></canvas><div id="flash"></div>
 
 <div class="modal" id="locModal">
   <div class="box">
@@ -304,15 +412,26 @@
   <span class="st" id="stECMWF"><span class="led"></span>ECMWF</span>
   <span class="st" id="stGFS"><span class="led"></span>GFS (NOAA)</span>
   <span class="st" id="stICON"><span class="led"></span>ICON (DWD)</span>
+  <span class="st" id="stGEM"><span class="led"></span>GEM (Canadá)</span>
+  <span class="st" id="stJMA"><span class="led"></span>JMA (Japón)</span>
   <span class="st" id="stAUX"><span class="led"></span>Horario+Astro</span>
   <span class="st" id="stAIR"><span class="led"></span>Aire (AQI)</span>
   <span id="connMsg"><span class="spin"></span> conectando a modelos globales…</span>
   <button id="btnRefresh"><span class="ic">↻</span> Actualizar ahora</button>
 </div>
 
-<div class="alert anim" style="animation-delay:.12s" id="alertBox">
-  <div class="ic">⚠️</div>
-  <div><b>Alerta meteorológica CEAZA/DMC:</b> evento potencialmente intenso. Pulsos nocturnos que podrían superar 10 mm/h, viento 60–100 km/h, tormentas eléctricas y riesgo de activación de quebradas.</div>
+<div class="alert anim lvl-0" style="animation-delay:.12s" id="alertBox">
+  <div class="ic" id="alertIc">⏳</div>
+  <div class="albody">
+    <div class="altitle" id="alertLabel">Analizando condiciones…</div>
+    <div id="alertText">Calculando el aviso automático a partir de los modelos en vivo.</div>
+    <div class="alchips" id="alertChips"></div>
+    <div class="allinks">
+      <a href="https://www.senapred.cl/informate/alertas/" target="_blank" rel="noopener noreferrer">🛡️ Alertas oficiales SENAPRED</a>
+      <a href="https://www.meteochile.gob.cl/PortalDMC-web/index.xhtml" target="_blank" rel="noopener noreferrer">🌡️ Avisos DMC</a>
+      <a href="https://www.ceazamet.cl/" target="_blank" rel="noopener noreferrer">📡 CEAZA-Met</a>
+    </div>
+  </div>
 </div>
 
 <section class="card anim" style="animation-delay:.2s">
@@ -393,7 +512,7 @@
 </div>
 
 <details class="sources anim" style="animation-delay:.68s">
-  <summary>Fuentes del ensamble (mm/día) — ECMWF/GFS/ICON automáticas · CEAZA editable</summary>
+  <summary>Fuentes del ensamble (mm/día) — 5 modelos globales automáticos · ajuste local opcional</summary>
   <div class="srcbody">
     <div style="overflow-x:auto"><table id="srcTable"></table></div>
     <div class="actions">
@@ -405,7 +524,7 @@
 </details>
 
 <footer class="anim" style="animation-delay:.76s">
-  Conector en vivo: al abrir esta página descarga automáticamente los pronósticos de <b>ECMWF</b> (Europa), <b>GFS</b> (NOAA, EE.UU.) e <b>ICON</b> (DWD, Alemania), más variables horarias (humedad, presión, viento, nubosidad, UV, visibilidad, sensación térmica), datos de sol/luna y calidad del aire (AQI/PM2.5) vía <b>Open-Meteo</b> (open-meteo.com, datos abiertos, sin clave). Todo se combina en el ensamble Monte Carlo junto con los montos de CEAZA que ingreses. El mapa usa OpenStreetMap. Si no hay internet, se usan los últimos datos disponibles. Ante el temporal, guíate por lo que publiquen la <b>DMC</b> y <b>CEAZA</b>.
+  Conector en vivo: al abrir esta página descarga automáticamente los pronósticos de <b>ECMWF</b> (Europa), <b>GFS</b> (NOAA, EE.UU.), <b>ICON</b> (DWD, Alemania), <b>GEM</b> (Canadá) y <b>JMA</b> (Japón), más las <b>condiciones actuales medidas</b> y variables horarias (humedad, presión, viento, ráfagas, nubosidad, UV, visibilidad, CAPE/tormenta, sensación térmica), datos de sol/luna y calidad del aire (AQI/PM2.5) vía <b>Open-Meteo</b> (open-meteo.com, datos abiertos, sin clave). Con esas variables se calcula el <b>aviso automático</b> de la página. El ajuste local es opcional. El mapa usa OpenStreetMap. Si no hay internet, se usan los últimos datos disponibles. La alerta de esta página es orientativa: ante un temporal, la fuente oficial es <b>SENAPRED</b> (que envía el SAE al celular) y la <b>DMC</b>; CEAZA-Met publica datos de estaciones de la región.
 </footer>
 </div>
 
@@ -426,10 +545,12 @@ const BASE={
   tmax:[17,16,13,15,15,15,14], tmin:[5,8,7,10,10,10,6],
   wind:[15,20,35,38,51,68,30],
   sources:{
-    "CEAZA":{w:0.35,mm:[0,2,27,51,34,49,5],manual:true},
-    "ECMWF":{w:0.30,mm:[0,0.4,35,69,34,55,9]},
-    "GFS":{w:0.20,mm:[0,3,30,60,40,55,8]},
-    "ICON":{w:0.15,mm:[0,1,25,55,30,45,6]}
+    "ECMWF":{w:0.30,mm:[0,0.4,35,69,34,55,9],auto:true},
+    "GFS":{w:0.22,mm:[0,3,30,60,40,55,8],auto:true},
+    "ICON":{w:0.20,mm:[0,1,25,55,30,45,6],auto:true},
+    "GEM":{w:0.16,mm:[0,2,28,58,33,50,7],auto:true},
+    "JMA":{w:0.12,mm:[0,1,26,54,31,48,6],auto:true},
+    "Ajuste local":{w:0,mm:[0,2,30,60,34,50,7],manual:true,opt:true}
   }
 };
 let state=JSON.parse(JSON.stringify(BASE)), R=null;
@@ -504,7 +625,8 @@ function runModel(){
 }
 
 /* ================= CONECTOR OPEN-METEO (ECMWF/GFS/ICON) ================= */
-const MODELS=[["ECMWF","ecmwf_ifs025","stECMWF"],["GFS","gfs_seamless","stGFS"],["ICON","icon_seamless","stICON"]];
+const MODELS=[["ECMWF","ecmwf_ifs025","stECMWF"],["GFS","gfs_seamless","stGFS"],["ICON","icon_seamless","stICON"],["GEM","gem_seamless","stGEM"],["JMA","jma_seamless","stJMA"]];
+const MW={ECMWF:0.30,GFS:0.22,ICON:0.20,GEM:0.16,JMA:0.12};   // pesos por modelo (se normalizan)
 function setSt(id,cls){const el=document.getElementById(id);if(!el)return;
   el.classList.remove("ok","err","busy");if(cls)el.classList.add(cls)}
 function pickArr(daily,base,model,D){
@@ -536,18 +658,23 @@ async function connectModels(){
     if(dates.length<5)throw new Error("respuesta sin fechas");
     const D=dates.length;
     const sameDates=JSON.stringify(dates)===JSON.stringify(state.dates);
-    const oldCeaza=state.sources["CEAZA"];
-    const newSources={};let okCount=0, ref=null;
+    const oldAdj=state.sources["Ajuste local"];
+    const newSources={};let okCount=0;
     for(const[name,model,stId]of MODELS){
       const mm=pickArr(daily,"precipitation_sum",model,D);
-      if(mm){newSources[name]={w:name==="ECMWF"?0.30:name==="GFS"?0.20:0.15,
+      if(mm){newSources[name]={w:MW[name]||0.15,
         mm:mm.map(v=>Math.max(0,+v||0)),auto:true};
-        setSt(stId,"ok");okCount++;if(!ref)ref=newSources[name].mm}
+        setSt(stId,"ok");okCount++;}
       else setSt(stId,"err");
     }
     if(!okCount)throw new Error("ningún modelo entregó datos");
-    if(isOvalle){newSources["CEAZA"]={w:0.35,manual:true,
-      mm:(sameDates&&oldCeaza)?oldCeaza.mm.slice(0,D):ref.slice()};}
+    // Referencia = promedio del ensamble (solo modelos que respondieron)
+    const ref=[];for(let d=0;d<D;d++){let s=0,c=0;
+      for(const[name]of MODELS){if(newSources[name]){s+=newSources[name].mm[d]||0;c++;}}
+      ref.push(c?s/c:0);}
+    // Ajuste local: opcional y automático (parte igual al ensamble; peso 0 = no interviene salvo que se active)
+    newSources["Ajuste local"]={w:0,manual:true,opt:true,
+      mm:(sameDates&&oldAdj)?oldAdj.mm.slice(0,D):ref.map(v=>+v.toFixed(1))};
     const probDia=[];
     for(let d=0;d<D;d++){let p=0,got=false;
       for(const[,model]of MODELS){
@@ -562,15 +689,15 @@ async function connectModels(){
         out.push(c?Math.round(s/c):null)}return out};
     const modelSources=Object.fromEntries(
       MODELS.filter(m=>newSources[m[0]]).map(m=>[m[0],newSources[m[0]]]));
-    const sources=isOvalle?{"CEAZA":newSources["CEAZA"],...modelSources}:modelSources;
+    const sources={...modelSources,"Ajuste local":newSources["Ajuste local"]};
     state={updated:new Date().toLocaleString("es-CL",{dateStyle:"short",timeStyle:"short"})
-        +" · ECMWF/GFS/ICON en vivo"+(isOvalle&&sameDates?" + CEAZA":""),
+        +` · ${okCount} modelos globales en vivo`,
       dates,probDia,
       tmax:avg("temperature_2m_max").map(v=>v??15),
       tmin:avg("temperature_2m_min").map(v=>v??7),
       wind:avg("wind_speed_10m_max").map(v=>v??15),
       sources};
-    msg.innerHTML=`<b style="color:var(--ok)">✓ conectado</b> · ${okCount}/3 modelos · ${state.updated}`;
+    msg.innerHTML=`<b style="color:var(--ok)">✓ conectado</b> · ${okCount}/${MODELS.length} modelos · ${state.updated}`;
     document.getElementById("lastUpdate").textContent=state.updated;
     okEns=true;
   }catch(e){
@@ -582,8 +709,9 @@ async function connectModels(){
   }
   // Recalcular ensamble con lo que haya y pintar
   buildTable();R=runModel();
-  // Datos horarios reales + aire (en paralelo, no bloquean el render)
-  await Promise.all([fetchAux(),fetchAir()]);
+  // Datos horarios reales + aire + condiciones actuales medidas (en paralelo)
+  await Promise.all([fetchAux(),fetchAir(),fetchCurrent()]);
+  computeAlert();
   syncSliderToNow();
   render();
   if(okEns)await saveState();
@@ -594,6 +722,7 @@ async function fetchAux(){
   const D=state.dates.length;
   const url=`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
     +`&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,`
+    +`precipitation,snowfall,weather_code,cape,wind_gusts_10m,`
     +`surface_pressure,cloud_cover,visibility,uv_index,wind_speed_10m,wind_direction_10m`
     +`&daily=sunrise,sunset,uv_index_max&forecast_days=7&timezone=${encodeURIComponent(TZ)}`;
   try{
@@ -612,6 +741,8 @@ async function fetchAux(){
       pressure:grab("surface_pressure"),cloud:grab("cloud_cover"),
       visibility:grab("visibility"),uv:grab("uv_index"),
       wspd:grab("wind_speed_10m"),wdir:grab("wind_direction_10m"),
+      precip:grab("precipitation"),snow:grab("snowfall"),wcode:grab("weather_code"),
+      cape:grab("cape"),gust:grab("wind_gusts_10m"),
       aqi:aux&&aux.aqi?aux.aqi:new Array(D*24).fill(null),
       pm25:aux&&aux.pm25?aux.pm25:new Array(D*24).fill(null),
       sunrise:(dd.sunrise||[]).slice(0,D),sunset:(dd.sunset||[]).slice(0,D),
@@ -635,6 +766,90 @@ async function fetchAir(){
   }catch(e){setSt("stAIR","err");}
 }
 
+/* ---- condiciones actuales MEDIDAS (análisis Open-Meteo) ---- */
+let curNow=null;
+async function fetchCurrent(){
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
+    +`&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,`
+    +`weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,wind_direction_10m,surface_pressure`
+    +`&timezone=${encodeURIComponent(TZ)}`;
+  try{
+    const j=await fetchJSON(url,10000);
+    if(j&&j.current){curNow={...j.current,ts:Date.now()};setSt("stAUX","ok");}
+  }catch(e){/* condiciones actuales son opcionales */}
+}
+
+/* ================= MOTOR DE ALERTA AUTOMÁTICA ================= */
+// Calcula, a partir de los datos en vivo (lluvia, acumulados, ráfagas y CAPE/tormenta),
+// un aviso con nivel 0-3. Reemplaza la alerta fija. Umbrales pensados para el Norte Chico
+// (zona árida donde lluvias moderadas ya activan quebradas).
+const ALV=[
+  {k:0,ic:"✅",label:"Sin avisos",col:"var(--ok)"},
+  {k:1,ic:"🌧️",label:"Atención",col:"var(--warn)"},
+  {k:2,ic:"⚠️",label:"Alerta",col:"#FF9E5B"},
+  {k:3,ic:"⛈️",label:"Alerta máxima",col:"var(--danger)"}
+];
+let ALERT={level:0};
+function alWhen(h){if(h<0||!state.dates[Math.floor(h/24)])return"";
+  const d=Math.floor(h/24),hod=h%24;return `${fmtDay(state.dates[d])} ${String(hod).padStart(2,"0")}:00`;}
+function computeAlert(){
+  const box=$("alertBox");if(!box)return;
+  const A=aux&&aux.hasData&&aux.precip;
+  const start=nowHourIdx(),END=Math.min(state.dates.length*24,start+72);
+  let maxRate=0,rateH=-1,maxGust=0,gustH=-1,maxCape=0,thunder=0,snow=0,max24=0,acc24H=-1,tot=0;
+  if(A){
+    for(let h=start;h<END;h++){
+      const pr=+aux.precip[h]||0;tot+=pr;if(pr>maxRate){maxRate=pr;rateH=h;}
+      const g=+(aux.gust&&aux.gust[h])||0;if(g>maxGust){maxGust=g;gustH=h;}
+      const cp=+(aux.cape&&aux.cape[h])||0;if(cp>maxCape)maxCape=cp;
+      const wc=+(aux.wcode&&aux.wcode[h])||0;if(wc>=95)thunder++;
+      snow+=+(aux.snow&&aux.snow[h])||0;
+    }
+    for(let h=start;h<END;h++){let s=0;for(let k=0;k<24&&h+k<END;k++)s+=+aux.precip[h+k]||0;
+      if(s>max24){max24=s;acc24H=h;}}
+  }
+  const lvRain=maxRate>=10?3:maxRate>=5?2:maxRate>=2?1:0;
+  const lvAcc =max24>=50?3:max24>=25?2:max24>=10?1:0;
+  const lvWind=maxGust>=90?3:maxGust>=70?2:maxGust>=50?1:0;
+  const lvStorm=(thunder>=1&&maxCape>=1000)?3:thunder>=1?2:maxCape>=800?1:0;
+  const lvSnow=snow>=10?2:snow>=3?1:0;
+  const level=A?Math.max(lvRain,lvAcc,lvWind,lvStorm,lvSnow):0;
+  const quebradas=maxRate>=8||max24>=30;
+  ALERT={level,maxRate,max24,maxGust,maxCape,thunder,snow,tot,quebradas,rateH,gustH,acc24H,hasData:!!A};
+  const lv=ALV[level];
+  // Frases dinámicas
+  const parts=[];
+  if(lvRain>=1)parts.push(`pulsos de lluvia de hasta <b>${maxRate.toFixed(1)} mm/h</b> (${alWhen(rateH)})`);
+  if(lvAcc>=1)parts.push(`acumulados de hasta <b>${Math.round(max24)} mm</b> en 24 h`);
+  if(lvWind>=1)parts.push(`ráfagas de viento hasta <b>${Math.round(maxGust)} km/h</b>`);
+  if(lvStorm>=2)parts.push(`<b>tormentas eléctricas</b> probables`);
+  else if(lvStorm>=1)parts.push(`condiciones favorables a tormenta`);
+  if(lvSnow>=1)parts.push(`nieve acumulada ~${snow.toFixed(0)} cm en cotas altas`);
+  let text;
+  if(!A){text="Conectando con los modelos para calcular el aviso automático…";}
+  else if(level===0){text=`Sin avisos meteorológicos relevantes para las próximas 72 h según el ensamble de ${MODELS.length} modelos. Condiciones estables (acumulado previsto ≈ ${tot.toFixed(0)} mm).`;}
+  else{
+    text=`Se esperan `+parts.join(", ").replace(/,([^,]*)$/," y$1")+`. `;
+    if(quebradas)text+=`<b style="color:var(--danger)">Posible activación de quebradas y cursos de agua</b> — evita cauces, zonas bajas y no cruces esteros. `;
+    text+=`Mantente atento a las alertas oficiales de SENAPRED y la DMC.`;
+  }
+  // Pintar
+  box.className="alert anim lvl-"+level;
+  $("alertIc").textContent=lv.ic;
+  $("alertLabel").innerHTML=`<b style="color:${lv.col}">${lv.label}${level>0?" · Vigía Limarí":""}</b> `
+    +`<span class="alsub">aviso automático · calculado en vivo</span>`;
+  $("alertText").innerHTML=text;
+  const chips=[];
+  if(A){
+    chips.push([`💧 ${maxRate.toFixed(1)} mm/h`,"pico de intensidad"]);
+    chips.push([`🌧️ ${Math.round(max24)} mm/24h`,"acumulado máx."]);
+    chips.push([`💨 ${Math.round(maxGust)} km/h`,"ráfaga máx."]);
+    if(maxCape>=300)chips.push([`⚡ CAPE ${Math.round(maxCape)}`,"energía tormenta"]);
+    chips.push([`Σ ${tot.toFixed(0)} mm`,"total 72 h"]);
+  }
+  $("alertChips").innerHTML=chips.map(([t])=>`<span class="alchip">${t}</span>`).join("");
+}
+
 /* ================= HELPERS DE CLIMA ================= */
 function iconFor(p,mm,night){
   if(mm>=25)return"⛈️";if(mm>=8)return"🌧️";
@@ -645,6 +860,20 @@ function condText(p,mm){
   if(mm>=25)return"Lluvia intensa, posibles tormentas";
   if(mm>=8)return"Lluvia";if(p>=0.5)return"Chubascos";
   if(p>=0.25)return"Muy nublado";return"Parcialmente nublado"}
+// Código de tiempo WMO (para las condiciones actuales medidas) → [emoji, texto]
+function wmo(c,night){c=+c||0;
+  if(c===0)return[night?"🌙":"☀️","Despejado"];
+  if(c===1)return[night?"🌙":"🌤️","Mayormente despejado"];
+  if(c===2)return[night?"☁️":"⛅","Parcialmente nublado"];
+  if(c===3)return["☁️","Nublado"];
+  if(c===45||c===48)return["🌫️","Niebla"];
+  if(c>=51&&c<=57)return["🌦️","Llovizna"];
+  if(c>=61&&c<=67)return["🌧️",c>=65?"Lluvia fuerte":"Lluvia"];
+  if(c>=71&&c<=77)return["🌨️","Nieve"];
+  if(c>=80&&c<=82)return["🌧️",c>=82?"Chubascos fuertes":"Chubascos"];
+  if(c>=85&&c<=86)return["🌨️","Chubascos de nieve"];
+  if(c>=95)return["⛈️","Tormenta eléctrica"];
+  return["⛅","Variable"]}
 function tempAt(d,hod){
   const tmin=state.tmin[d]??8,tmax=state.tmax[d]??15;
   const ph=(hod-6+24)%24;
@@ -940,15 +1169,22 @@ function render(){
     +now.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
 
   const pNow=R.pHour[hIdx]??0,night=hNow<7||hNow>=19;
-  $("nowIcon").textContent=iconFor(pNow,R.daily.p50[ti],night);
-  countUp($("nowTemp"),Math.round(auxTemp(hIdx)),800);
-  $("nowCond").textContent=condText(pNow,R.daily.p50[ti]);
-  $("nowFeels").textContent=`Sensación ${Math.round((aux&&aux.hasData&&aux.appt&&aux.appt[hIdx]!=null)?aux.appt[hIdx]:auxTemp(hIdx)-2)}° · Máx ${state.tmax[ti]}° / Mín ${state.tmin[ti]}°`;
+  const useCur=curNow&&curNow.temperature_2m!=null;
+  const [curIc,curTxt]=useCur?wmo(curNow.weather_code,night)
+    :[iconFor(pNow,R.daily.p50[ti],night),condText(pNow,R.daily.p50[ti])];
+  $("nowIcon").textContent=curIc;
+  countUp($("nowTemp"),Math.round(useCur?curNow.temperature_2m:auxTemp(hIdx)),800);
+  $("nowCond").innerHTML=curTxt+(useCur?' <span class="measured">● medido ahora</span>':'');
+  const feelNow=useCur&&curNow.apparent_temperature!=null?curNow.apparent_temperature
+    :(aux&&aux.hasData&&aux.appt&&aux.appt[hIdx]!=null?aux.appt[hIdx]:auxTemp(hIdx)-2);
+  $("nowFeels").textContent=`Sensación ${Math.round(feelNow)}° · Máx ${state.tmax[ti]}° / Mín ${state.tmin[ti]}°`;
   $("nowKv").innerHTML=[
     ["P. lluvia ahora","%"],["Viento"," km/h"],["Lluvia hoy (P50)"," mm"],["Humedad","%"]
   ].map(([k,u],i)=>`<div class="kv"><div class="k">${k}</div><div class="v"><span id="kv${i}">0</span><small>${u}</small></div></div>`).join("");
-  const humNow=(aux&&aux.hasData&&aux.humidity&&aux.humidity[hIdx]!=null)?+aux.humidity[hIdx]:(pNow>0.3?85:62);
-  [ [Math.round(pNow*100),0],[state.wind[ti]||15,0],[+R.daily.p50[ti].toFixed(1),1],[Math.round(humNow),0] ]
+  const humNow=useCur&&curNow.relative_humidity_2m!=null?+curNow.relative_humidity_2m
+    :(aux&&aux.hasData&&aux.humidity&&aux.humidity[hIdx]!=null)?+aux.humidity[hIdx]:(pNow>0.3?85:62);
+  const windNow=useCur&&curNow.wind_speed_10m!=null?+curNow.wind_speed_10m:(state.wind[ti]||15);
+  [ [Math.round(pNow*100),0],[Math.round(windNow),0],[+R.daily.p50[ti].toFixed(1),1],[Math.round(humNow),0] ]
     .forEach(([v,dec],i)=>countUp($("kv"+i),v,900,dec));
 
   // franja horaria
@@ -1210,7 +1446,7 @@ function buildTable(){
   const D=state.dates.length;
   let h="<tr><th>Fuente</th><th>Peso</th>"+state.dates.map(d=>`<th>${fmtDay(d)}</th>`).join("")+"</tr>";
   for(const[nm,s]of Object.entries(state.sources)){
-    const tag=s.manual?"":'<span class="auto">auto</span>';
+    const tag=s.opt?'<span class="auto" style="color:var(--txt2)">opcional</span>':s.manual?"":'<span class="auto">auto</span>';
     h+=`<tr><td>${nm}${tag}</td><td><input type="number" step="0.05" min="0" max="1" value="${s.w}" data-src="${nm}" data-k="w"></td>`;
     for(let d=0;d<D;d++)h+=`<td><input type="number" step="1" min="0" value="${(+s.mm[d]).toFixed(1).replace(/\.0$/,"")}" data-src="${nm}" data-k="mm" data-d="${d}"${s.manual?"":" readonly style='opacity:.65'"}></td>`;
     h+="</tr>"}
@@ -1245,9 +1481,8 @@ async function loadState(){try{if(window.storage){
 /* ================= UBICACIÓN (geolocalización + búsqueda) ================= */
 function applyLocationUI(){
   $("locName").textContent=PLACE;
-  $("alertBox").style.display=isOvalle?"":"none";      // alerta CEAZA/DMC solo aplica a Ovalle
-  const ceaza=$("stCEAZA");if(ceaza)ceaza.style.display=isOvalle?"":"none";
   $("btnOvalle").style.display=isOvalle?"none":"";
+  // La alerta automática se calcula para la ubicación cargada, así que siempre se muestra.
 }
 async function setLocation(lat,lon,name,ovalle,region){
   LAT=lat;LON=lon;PLACE=name;isOvalle=!!ovalle;regionView=!!region;
