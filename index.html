@@ -564,6 +564,8 @@ const DIA=["dom","lun","mar","mié","jue","vie","sáb"];
 const DIAF=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 const MES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const dObj=d=>new Date(d+"T12:00:00");
+// Fecha local YYYY-MM-DD (NO usar toISOString: devuelve UTC y adelanta el día de 20:00 a 24:00 en Chile)
+const isoLocal=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const fmtDay=d=>{const t=dObj(d);return DIA[t.getDay()]+" "+t.getDate()};
 const fmtLong=d=>{const t=dObj(d);return DIAF[t.getDay()]+" "+t.getDate()+" de "+MES[t.getMonth()]};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -1131,7 +1133,7 @@ function renderWidgets(h){
 
 /* ================= SELECCIÓN DE HORA ================= */
 function nowHourIdx(){
-  const now=new Date();let ti=state.dates.findIndex(d=>d===now.toISOString().slice(0,10));
+  const now=new Date();let ti=state.dates.findIndex(d=>d===isoLocal(now));
   if(ti<0)ti=0;return clamp(ti*24+now.getHours(),0,state.dates.length*24-1);
 }
 function syncSliderToNow(){selHour=nowHourIdx();
@@ -1162,7 +1164,7 @@ function togglePlay(){
 /* ================= RENDER PRINCIPAL ================= */
 function render(){
   const D=R.D,now=new Date();
-  let ti=state.dates.findIndex(d=>d===now.toISOString().slice(0,10));
+  let ti=state.dates.findIndex(d=>d===isoLocal(now));
   if(ti<0)ti=0;
   const hNow=now.getHours(),hIdx=Math.min(ti*24+hNow,D*24-1);
   $("nowStr").textContent=fmtLong(state.dates[ti])+" · "
@@ -1426,7 +1428,7 @@ let lastHour=new Date().getHours();
 setInterval(()=>{
   const now=new Date(),el=$("nowStr");
   if(el&&state.dates.length){
-    let ti=state.dates.findIndex(d=>d===now.toISOString().slice(0,10));if(ti<0)ti=0;
+    let ti=state.dates.findIndex(d=>d===isoLocal(now));if(ti<0)ti=0;
     el.textContent=fmtLong(state.dates[ti])+" · "
       +now.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
   if(now.getHours()!==lastHour){lastHour=now.getHours();connectModels()}
