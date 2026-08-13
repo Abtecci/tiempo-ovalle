@@ -1594,15 +1594,19 @@ async function searchCity(q){
 async function geocode(name,count){
   if(!name)return [];
   const j=await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search`
-    +`?name=${encodeURIComponent(name)}&count=${count||10}&language=es&format=json`,9000);
-  return j.results||[];
+    +`?name=${encodeURIComponent(name)}&count=${Math.max(count||10,20)}&language=es&format=json`,9000);
+  const all=j.results||[];
+  // Por defecto priorizamos Chile; si no hay resultados en Chile, devolvemos todos como respaldo.
+  const cl=all.filter(r=>String(r.country_code||"").toUpperCase()==="CL");
+  return cl.length?cl:all;
 }
 // Geocodificador OpenStreetMap/Nominatim (cobertura amplia de localidades, sectores y comunas)
 // cc = código de país (ej. "cl") para restringir resultados y evitar homónimos de otros países.
 // box=[sur,norte,oeste,este] → si se entrega, la búsqueda queda ACOTADA a esa zona (bounded=1)
 async function geocodeOSM(q,cc,box){
   if(!q)return [];
-  const c=cc?`&countrycodes=${encodeURIComponent(cc)}`:"";
+  cc=cc||"cl"; // Por defecto restringe a Chile para evitar homónimos de otros países (ej. Los Ángeles, EE.UU.)
+  const c=`&countrycodes=${encodeURIComponent(cc)}`;
   const v=box?`&viewbox=${box[2]},${box[1]},${box[3]},${box[0]}&bounded=1`:"";
   const url=`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}`
     +`&format=json&addressdetails=1&limit=15&accept-language=es${c}${v}`;
